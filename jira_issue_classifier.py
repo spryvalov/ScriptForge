@@ -3,20 +3,10 @@ import logging
 from jira import JIRA
 import openai
 from constants import POSSIBLE_DOMAINS, TECHNOLOGIES
+from config import config
 
 logging.basicConfig(level=logging.INFO)
 
-
-class Config:
-    def __init__(self):
-        self.jira_url = os.getenv("JIRA_URL", "http://localhost:8081")
-        self.jira_email = os.getenv("JIRA_EMAIL", "")
-        self.jira_api_token = os.getenv("JIRA_API_TOKEN", "")
-        self.jql_query = os.getenv("JQL_QUERY", "assignee=currentUser()")
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-
-
-config = Config()
 
 # Initialize APIs
 jira = JIRA(server=config.jira_url, options={"server": config.jira_url}, token_auth=config.jira_api_token)
