@@ -9,17 +9,15 @@ This repository serves as a playground for writing and improving Python scripts:
 ### Why This Exists
 In my current role, I don’t code as much as I’d like. Maintaining this repository allows me to stay connected to coding, experiment with ideas.
 
-## Jira Issue Classifier
-
+## Scripts
+### Jira Issue Classifier
 **Purpose**: Classifies Jira issues into domains and technologies using OpenAI GPT and updates the issue labels in Jira accordingly.
+### Complexity assessment
+**Purpose**: Analyzes the complexity of Jira tasks based on their summaries and descriptions using OpenAI GPT. It assigns a complexity level (0: Unable to determine, 1: Low, 2: Medium, 3: High) to each issue and updates a custom complexity field in Jira. 
 
-### Key Features
-- Fetches issues from Jira using a JQL query.
-- Classifies issues into predefined domains and technologies.
-- Automatically updates Jira labels based on classification.
 
 ### Usage
-1. Clone the Repository**:
+1. Clone the Repository:
 2. Set Up Environment Variables:
       Create a .env file or export the following variables:
     ```bash
