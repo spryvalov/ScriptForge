@@ -9,38 +9,42 @@ This repository serves as a playground for writing and improving Python scripts:
 ### Why This Exists
 In my current role, I don’t code as much as I’d like. Maintaining this repository allows me to stay connected to coding, experiment with ideas.
 
-## Scripts
-### Jira Issue Classifier
-**Purpose**: Classifies Jira issues into domains and technologies using OpenAI GPT and updates the issue labels in Jira accordingly.
-### Complexity assessment
-**Purpose**: Analyzes the complexity of Jira tasks based on their summaries and descriptions using OpenAI GPT. It assigns a complexity level (0: Unable to determine, 1: Low, 2: Medium, 3: High) to each issue and updates a custom complexity field in Jira. 
+## Scripts Overview
 
+1. **`jira_issue_classifier.py`**:
+    - **Purpose**: Classifies Jira issues into predefined domains and technologies.
+    - **Key Features**:
+        - Fetches issues from Jira using JQL.
+        - Uses OpenAI to classify issues based on their summaries and descriptions.
+        - Updates the classification labels in Jira.
+    - **Usage**:
+      ```bash
+      python jira_issue_classifier.py --jira-url <JIRA_URL> --jira-api-token <API_TOKEN> --openai-api-key <OPENAI_KEY> <JQL>
+      ```
 
-### Usage
-1. Clone the Repository:
-2. Set Up Environment Variables:
-      Create a .env file or export the following variables:
-    ```bash
-    export JIRA_URL="https://your-jira-instance.atlassian.net"
-    export JIRA_API_TOKEN="your-jira-api-token"
-    export OPENAI_API_KEY="your-openai-api-key"
-    ```
-3. Install dependencies
-    ```bash
-    pip install -r requirements.txt
-    ```
-4. Run the script
-    ```bash
-    python jira_issue_classifier.py
-    ```
+2. **`complexity_assessment.py`**:
+    - **Purpose**: Assesses the complexity of Jira tasks using OpenAI.
+    - **Key Features**:
+        - Fetches issues without complexity values using JQL.
+        - Uses OpenAI to evaluate task complexity (Low, Medium, High).
+        - Updates the custom Complexity field in Jira.
+    - **Usage**:
+      ```bash
+      python complexity_assessment.py --jira-url <JIRA_URL> --jira-api-token <API_TOKEN> --openai-api-key <OPENAI_KEY> <JQL>
+      ```
 
 ## Requirements
 
-	•	Python 3.8+
-	•	Dependencies listed in requirements.txt.
+- Python 3.8+
+- Dependencies:
+    - `jira`
+    - `openai`
+    - `typer`
 
-Note:
-Use this script only with authorized access to Jira and OpenAI APIs.
+Install all dependencies with:
+```bash
+pip install -r requirements.txt
+```
 
 ### Contributing
 
