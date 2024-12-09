@@ -5,7 +5,7 @@ import openai
 import typer
 from jira import JIRA, Issue
 
-from constants import POSSIBLE_DOMAINS, TECHNOLOGIES
+from constants import POSSIBLE_DOMAINS, OLD_TAGS
 
 logging.basicConfig(level=logging.INFO)
 
@@ -36,51 +36,46 @@ def process_issue(client: openai.OpenAI, jira: JIRA, issue_key: str) -> None:
         summary, description = issue.fields.summary, issue.fields.description or "No description available"
         logging.info(f"Processing Jira Task: {issue_key}")
 
-        # Classify domain and technology
-        domains, technologies = classify_task(client, summary, description)
-        logging.info(f"Classified Domains: {domains}, Technologies: {technologies}")
+        domains = classify_task(client, summary, description)
+        logging.info(f"Classified Domains: {domains}")
 
         # Add tags to Jira
-        update_jira_labels(jira, issue_key, domains + technologies, POSSIBLE_DOMAINS + TECHNOLOGIES)
-        logging.info(f"Tags added to Jira issue {issue_key}: {domains + technologies}")
+        update_jira_labels(jira, issue_key, domains, OLD_TAGS)
+        logging.info(f"Tags added to Jira issue {issue_key}: {domains}")
     except Exception as e:
         logging.error(f"Failed to process issue {issue_key}: {e}")
 
 
-def classify_task(client: openai.OpenAI, summary: str, description: str) -> Tuple[List[str], List[str]]:
+def classify_task(client: openai.OpenAI, summary: str, description: str) -> List[str]:
     prompt = f"""
     Based on the following task details, determine:
     1. The most suitable domain(s) (up to 2) from this list: {", ".join(POSSIBLE_DOMAINS)}.
-    2. The most suitable technology(s) (up to 2) from this list: {", ".join(TECHNOLOGIES)}.
 
     Task Summary: {summary}
     Task Description: {description}
 
     Respond in this format:
     Domains: <semicolon-separated list of domains>
-    Technologies: <semicolon-separated list of technologies>
     """
 
     response = execute_safe_call(client.chat.completions.create, model="gpt-3.5-turbo", messages=[
-        {"role": "system", "content": "You are an assistant for domain and technology classification."},
+        {"role": "system", "content": "You are an assistant for domain classification."},
         {"role": "user", "content": prompt}
     ], max_tokens=200, temperature=0.2)
 
     if not response:
-        return [], []
+        return []
 
     # Parse the response
     try:
         result = response.choices[0].message.content
         domains_line = (result or "").split("\n")[0].replace("Domains: ", "").strip()
-        technologies_line = (result or "").split("\n")[1].replace("Technologies: ", "").strip()
         domains = [d.strip() for d in domains_line.split(";")]
-        technologies = [t.strip() for t in technologies_line.split(";")]
         # Filter possible domains and technologies to avoid hallucinations
-        return [d for d in domains if d in POSSIBLE_DOMAINS], [t for t in technologies if t in TECHNOLOGIES]
+        return [d for d in domains if d in POSSIBLE_DOMAINS]
     except Exception as e:
         logging.error(f"Error parsing OpenAI response: {e}")
-        return [], []
+        return []
 
 
 def execute_safe_call(api_function: Callable[..., ReturnType], *args: Any, **kwargs: Any) -> Optional[ReturnType]:
