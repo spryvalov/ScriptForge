@@ -1,4 +1,6 @@
-jira
-openai
-typer
+jira~=3.8.0
+openai~=1.55.3
+typer~=0.14.0
 python-dotenv
+pandas~=2.2.3
+requests~=2.32.3
