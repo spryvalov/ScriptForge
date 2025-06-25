@@ -2,7 +2,9 @@ import logging
 from typing import Callable, TypeVar, Any, Optional, List, cast
 
 import openai
+import re
 import requests
+import spacy
 import typer
 from jira import JIRA, Issue
 
@@ -12,6 +14,9 @@ logging.basicConfig(level=logging.INFO)
 
 app = typer.Typer()
 ReturnType = TypeVar('ReturnType')
+nlp = spacy.load('en_core_web_sm')
+EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
+PHONE_RE = re.compile(r"(?:\+?\d[\d\s\-\(\)]{7,}\d)")
 
 
 @app.command()
@@ -140,35 +145,23 @@ def transition_with_labels(jira: JIRA, issue: Issue, updated_labels: List[str]) 
         logging.error(f"No 'closed' transition available for issue {issue.key}. Labels not updated.")
 
 
-def anonymize_text(prompt):
-    url = "http://localhost:11434/api/generate"
-    data = {
-        "model": "llama3",
-        "prompt": f"""
-        [Task]
-        You're an anonymization assistant. Your only job is to anonymize sensitive data in the provided text.
-        
-        [Instructions]
-        - Replace sensitive information such as person names, company names, emails, addresses, phone numbers, IP addresses, and any identifiable personal information with placeholders:
-          - Person names → [PersonName]
-          - Company names → [CompanyName]
-          - Emails → [Email]
-          - Addresses → [Address]
-          - Phone numbers → [PhoneNumber]
-        
-        - Do NOT alter other parts of the text.
-        - If no sensitive data is found, return the original text exactly as provided.
-        - Return only the anonymized or original text. Do not explain your actions.
-        
-        [Text]
-        {prompt}
-        
-        [Anonymized Text]
-        """,
-        "stream": False
-    }
-    response = requests.post(url, json=data)
-    return response.json()["response"]
+def anonymize_text(text):
+    doc = nlp(text)
+    anonymized = text
+    
+    for ent in reversed(doc.ents):  # reverse so offsets don't shift
+        if ent.label_ == "PERSON":
+            anonymized = anonymized[:ent.start_char] + "[PersonName]" + anonymized[ent.end_char:]
+        elif ent.label_ == "ORG":
+            anonymized = anonymized[:ent.start_char] + "[CompanyName]" + anonymized[ent.end_char:]
+        elif ent.label_ in ("GPE","LOC","FAC","ADDRESS"):
+            anonymized = anonymized[:ent.start_char] + "[Address]" + anonymized[ent.end_char:]
+    
+    anonymized = EMAIL_RE.sub("[Email]", anonymized)
+    anonymized = PHONE_RE.sub("[PhoneNumber]", anonymized)
+    
+    # If nothing was replaced, return original
+    return anonymized if anonymized != text else text
 
 
 if __name__ == "__main__":
