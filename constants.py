@@ -1,3 +1,27 @@
+POSSIBLE_TECH_EXPERTISE = [
+    "web-development",
+    "mobile",
+    "desktop",
+    "embedded-systems-and-firmware",
+    "ai-and-machine-learning",
+    "data-engineering-and-big-data",
+    "analytics-and-business-intelligence",
+    "generative-ai-and-llm",
+    "cloud-platforms",
+    "devops-cicd-iac",
+    "serverless-architectures",
+    "cybersecurity-and-application-security",
+    "blockchain-and-cryptography",
+    "iot-and-edge-computing",
+    "erp-and-crm-development",
+    "document-and-content-management",
+    "e-commerce-platforms",
+    "payments-and-transactions",
+    "defi-and-web3",
+    "xr-and-metaverse",
+    "ui-ux-design"
+]
+
 POSSIBLE_DOMAINS = [
     "agriculture-and-agritech",
     "ai-and-machine-learning",

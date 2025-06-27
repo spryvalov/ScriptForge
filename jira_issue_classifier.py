@@ -1,16 +1,22 @@
 import logging
-from typing import Callable, TypeVar, Any, Optional, List, Tuple, cast
+from typing import Callable, TypeVar, Any, Optional, List, cast
 
 import openai
+import re
+import requests
+import spacy
 import typer
 from jira import JIRA, Issue
 
-from constants import POSSIBLE_DOMAINS, OLD_TAGS
+from constants import POSSIBLE_DOMAINS, OLD_TAGS, POSSIBLE_TECH_EXPERTISE
 
 logging.basicConfig(level=logging.INFO)
 
 app = typer.Typer()
 ReturnType = TypeVar('ReturnType')
+nlp = spacy.load('en_core_web_sm')
+EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
+PHONE_RE = re.compile(r"(?:\+?\d[\d\s\-\(\)]{7,}\d)")
 
 
 @app.command()
@@ -34,34 +40,41 @@ def process_issue(client: openai.OpenAI, jira: JIRA, issue_key: str) -> None:
     try:
         issue = jira.issue(issue_key)
         summary, description = issue.fields.summary, issue.fields.description or "No description available"
+        comments = ";;\n".join(c.body for c in issue.fields.comment.comments)
         logging.info(f"Processing Jira Task: {issue_key}")
 
-        domains = classify_task(client, summary, description)
+        domains = classify_task(client, summary, description, comments)
         logging.info(f"Classified Domains: {domains}")
 
         # Add tags to Jira
-        update_jira_labels(jira, issue_key, domains, OLD_TAGS)
+        update_jira_labels(jira, issue_key, domains, list(set(OLD_TAGS + POSSIBLE_DOMAINS)), True)
         logging.info(f"Tags added to Jira issue {issue_key}: {domains}")
     except Exception as e:
         logging.error(f"Failed to process issue {issue_key}: {e}")
 
 
-def classify_task(client: openai.OpenAI, summary: str, description: str) -> List[str]:
+def classify_task(client: openai.OpenAI, summary: str, description: str, comments: str) -> List[str]:
     prompt = f"""
-    Based on the following task details, determine:
-    1. The most suitable domain(s) (up to 2) from this list: {", ".join(POSSIBLE_DOMAINS)}.
+    Based on the provided pre-sale details, determine if there's enough information to clearly assign the task to specific technical expertise from the following domains:
+    {", ".join(POSSIBLE_TECH_EXPERTISE)}.
+    
+    Only classify if explicitly supported by the details. DO NOT guess or infer expertise if details are vague or minimal.
 
-    Task Summary: {summary}
-    Task Description: {description}
-
-    Respond in this format:
-    Domains: <semicolon-separated list of domains>
+    Task Summary: {anonymize_text(summary)}
+    Task Description: {anonymize_text(description)}
+    Task Comments separated by ';;': {anonymize_text(comments)}
+    
+    Respond strictly in this format:
+    Expertise: <semicolon-separated list of 0-2 domains, or leave empty if unsure>
     """
 
-    response = execute_safe_call(client.chat.completions.create, model="gpt-3.5-turbo", messages=[
-        {"role": "system", "content": "You are an assistant for domain classification."},
+    response = execute_safe_call(client.chat.completions.create, model="gpt-4-turbo", messages=[
+        {"role": "system", 
+         "content": ("You are an assistant for domain classification. "
+                     "Classify tickets into relevant technical expertise domains ONLY if the task explicitly matches one of these domains. "
+                     "If there's not enough information, leave the expertise field empty without guessing.")},
         {"role": "user", "content": prompt}
-    ], max_tokens=200, temperature=0.2)
+    ], max_tokens=150, temperature=0.0)
 
     if not response:
         return []
@@ -69,10 +82,10 @@ def classify_task(client: openai.OpenAI, summary: str, description: str) -> List
     # Parse the response
     try:
         result = response.choices[0].message.content
-        domains_line = (result or "").split("\n")[0].replace("Domains: ", "").strip()
-        domains = [d.strip() for d in domains_line.split(";")]
+        labels_line = (result or "").split("\n")[0].replace("Expertise: ", "").strip()
+        labels = [d.strip() for d in labels_line.split(";")]
         # Filter possible domains and technologies to avoid hallucinations
-        return [d for d in domains if d in POSSIBLE_DOMAINS]
+        return [d for d in labels if d in POSSIBLE_TECH_EXPERTISE]
     except Exception as e:
         logging.error(f"Error parsing OpenAI response: {e}")
         return []
@@ -101,12 +114,12 @@ def fetch_all_issues(jql_query: str, jira: JIRA) -> List[str]:
     return [issue.key for issue in issues]
 
 
-def update_jira_labels(jira: JIRA, issue_key: str, new_tags: List[str], tags_to_clear: List[str]) -> None:
+def update_jira_labels(jira: JIRA, issue_key: str, new_tags: List[str], tags_to_clear: List[str], clear_old_labels: bool) -> None:
     issue = jira.issue(issue_key)
     current_labels = issue.fields.labels
     # Remove tags set previously by this exact script
     filtered_labels = [label for label in current_labels if label not in tags_to_clear]
-    updated_labels = list(set(filtered_labels + new_tags))
+    updated_labels = new_tags if clear_old_labels else list(set(filtered_labels + new_tags))
     if issue.fields.status.name.lower() == "closed":
         transition_with_labels(jira, issue, updated_labels)
     else:
@@ -130,6 +143,25 @@ def transition_with_labels(jira: JIRA, issue: Issue, updated_labels: List[str]) 
         logging.info(f"Issue {issue.key} re-resolved and labels updated: {updated_labels}")
     else:
         logging.error(f"No 'closed' transition available for issue {issue.key}. Labels not updated.")
+
+
+def anonymize_text(text):
+    doc = nlp(text)
+    anonymized = text
+    
+    for ent in reversed(doc.ents):  # reverse so offsets don't shift
+        if ent.label_ == "PERSON":
+            anonymized = anonymized[:ent.start_char] + "[PersonName]" + anonymized[ent.end_char:]
+        elif ent.label_ == "ORG":
+            anonymized = anonymized[:ent.start_char] + "[CompanyName]" + anonymized[ent.end_char:]
+        elif ent.label_ in ("GPE","LOC","FAC","ADDRESS"):
+            anonymized = anonymized[:ent.start_char] + "[Address]" + anonymized[ent.end_char:]
+    
+    anonymized = EMAIL_RE.sub("[Email]", anonymized)
+    anonymized = PHONE_RE.sub("[PhoneNumber]", anonymized)
+    
+    # If nothing was replaced, return original
+    return anonymized if anonymized != text else text
 
 
 if __name__ == "__main__":
